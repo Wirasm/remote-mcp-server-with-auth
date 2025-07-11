@@ -9,6 +9,10 @@ COOKIE_ENCRYPTION_KEY=<your cookie cookie encryption key>
 # For production, use Hyperdrive: https://developers.cloudflare.com/hyperdrive/
 DATABASE_URL=postgresql://username:password@localhost:5432/database_name
 
+# Anthropic API Key for PRP parsing
+# Get your API key from https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY=your_anthropic_api_key
+
 # Optional: Add Sentry DSN for local development monitoring
 # Get your DSN from https://sentry.io/settings/projects/your-project/keys/
 # Create a new project in Sentry, then for the platform pick Cloudflare Workers (search in the top right)

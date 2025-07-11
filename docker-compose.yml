@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mcp-cole-pg-test
+    restart: always
+    environment:
+      POSTGRES_USER: mcp_user
+      POSTGRES_PASSWORD: mcp_password
+      POSTGRES_DB: mcp_database
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d mcp_database"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

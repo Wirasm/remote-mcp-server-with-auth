@@ -44,7 +44,7 @@ Build a production-ready MCP (Model Context Protocol) server with:
 
 **Core MCP Tools:**
 
-- `parsePRP` - Parse a PRP markdown file and extract structured information using Claude
+- `parsePRP` - Parse a PRP markdown file and extract structured information using Claude (NO REGEX!!) only llm based
 - `createTask` - Create a new task with associated metadata
 - `updateTask` - Update an existing task's details
 - `deleteTask` - Delete a task (soft delete with audit trail)
@@ -82,9 +82,8 @@ Build a production-ready MCP (Model Context Protocol) server with:
 
 ### Success Criteria
 
-- [ ] MCP server passes validation with MCP Inspector
 - [ ] GitHub OAuth flow works end-to-end (authorization → callback → MCP access)
-- [ ] PRP parsing correctly extracts tasks, documentation, and metadata
+- [ ] PRP parsing correctly extracts tasks, documentation, and metadata using sonnet 4 check latest anthropc docs (key is setup in .dev.vars)
 - [ ] All CRUD operations work with proper permission validation
 - [ ] Database schema supports full PRP data model
 - [ ] TypeScript compilation succeeds with no errors
@@ -135,7 +134,8 @@ Build a production-ready MCP (Model Context Protocol) server with:
 
 # ANTHROPIC DOCUMENTATION
 - url: https://docs.anthropic.com/claude/docs/intro-to-claude
-  why: Claude API usage for PRP parsing
+  path: PRPs/ai_docs/claude-4-sonnet.md
+  why: Claude API usage for PRP parsing and latest model docs
 
 - url: https://github.com/anthropics/anthropic-sdk-typescript
   why: TypeScript SDK for Claude integration
@@ -282,7 +282,7 @@ interface PRPContext {
 }
 
 interface DocumentationRef {
-  type: 'url' | 'file' | 'docfile';
+  type: "url" | "file" | "docfile";
   path: string;
   why: string;
   section?: string;
@@ -297,7 +297,7 @@ interface Task {
   fileToModify?: string;
   pattern?: string;
   pseudocode?: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: "pending" | "in_progress" | "completed";
   additionalInfo: Record<string, any>;
   tags: string[];
   createdAt: Date;
@@ -333,7 +333,7 @@ const CreateTaskSchema = z.object({
 const UpdateTaskSchema = z.object({
   id: z.string().uuid().describe("Task ID"),
   description: z.string().optional(),
-  status: z.enum(['pending', 'in_progress', 'completed']).optional(),
+  status: z.enum(["pending", "in_progress", "completed"]).optional(),
   additionalInfo: z.record(z.any()).optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -354,11 +354,11 @@ interface Env {
 Task 1 - Project Setup:
   COPY wrangler.jsonc to wrangler-prp-parser.jsonc:
     - MODIFY name field to "prp-parser-mcp"
-    - ADD ANTHROPIC_API_KEY to vars section
+    - ADD ANTHROPIC_API_KEY to vars section in example file (already added in .dev.vars)
     - KEEP existing OAuth and database configuration
     - UPDATE main field to "src/prp-parser/index.ts"
 
-  UPDATE .dev.vars file:
+  UPDATE .dev.vars.example file:
     - ADD ANTHROPIC_API_KEY=your_api_key
     - KEEP existing OAuth and database variables
 
@@ -380,7 +380,7 @@ Task 2 - Database Schema:
 Task 3 - PRP Parser Implementation:
   CREATE src/prp-parser/parsers/prp-parser.ts:
     - IMPLEMENT Anthropic Claude integration
-    - USE claude-3-sonnet for parsing PRPs
+    - USE claude-4-sonnet for parsing PRPs (its important that we use claude-4-sonnet the latest model)
     - EXTRACT tasks, goals, documentation, success criteria
     - VALIDATE extracted data structure
     - HANDLE parsing errors gracefully
@@ -482,9 +482,9 @@ Task 9 - Production Deployment:
 // Task 3 - PRP Parser Implementation Pattern
 // src/prp-parser/parsers/prp-parser.ts
 
-import Anthropic from '@anthropic-ai/sdk';
-import { z } from 'zod';
-import { PRP, Task, DocumentationRef } from '../types';
+import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
+import { PRP, Task, DocumentationRef } from "../types";
 
 export class PRPParser {
   private anthropic: Anthropic;
@@ -539,9 +539,9 @@ ${content}
 `;
 
     const response = await this.anthropic.messages.create({
-      model: 'claude-3-sonnet-20240229',
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: "user", content: prompt }],
     });
 
     // Parse and validate the response
@@ -574,17 +574,17 @@ export function registerParsePRPTool(server: any, env: Env, props: Props) {
       try {
         // Initialize parser
         const parser = new PRPParser(env.ANTHROPIC_API_KEY);
-        
+
         // Parse PRP content
         console.log(`Parsing PRP for user: ${props.login}`);
         const parsed = await parser.parsePRP(prpContent);
-        
+
         // Save to database
         return await withDatabase(env.DATABASE_URL, async (db) => {
           // Start transaction
           const prpResult = await db`
             INSERT INTO prps (
-              name, description, goal, why, what, 
+              name, description, goal, why, what,
               success_criteria, context, created_by
             ) VALUES (
               ${parsed.name}, ${parsed.description}, ${parsed.goal},
@@ -594,49 +594,54 @@ export function registerParsePRPTool(server: any, env: Env, props: Props) {
             )
             RETURNING id, created_at
           `;
-          
+
           const prpId = prpResult[0].id;
-          
+
           // Insert tasks if requested
           if (extractTasks && parsed.tasks.length > 0) {
             await db`
               INSERT INTO tasks ${db(
-                parsed.tasks.map(task => ({
+                parsed.tasks.map((task) => ({
                   prp_id: prpId,
                   order: task.order,
                   description: task.description,
                   file_to_modify: task.fileToModify,
                   pattern: task.pattern,
                   pseudocode: task.pseudocode,
-                  status: 'pending'
-                }))
+                  status: "pending",
+                })),
               )}
             `;
           }
-          
+
           return {
-            content: [{
-              type: "text",
-              text: `**PRP Parsed Successfully**\n\n` +
-                    `**Name:** ${parsed.name}\n` +
-                    `**ID:** ${prpId}\n` +
-                    `**Tasks Extracted:** ${parsed.tasks.length}\n` +
-                    `**Documentation References:** ${parsed.context.documentation.length}\n\n` +
-                    `The PRP has been successfully parsed and saved to the database.`
-            }]
+            content: [
+              {
+                type: "text",
+                text:
+                  `**PRP Parsed Successfully**\n\n` +
+                  `**Name:** ${parsed.name}\n` +
+                  `**ID:** ${prpId}\n` +
+                  `**Tasks Extracted:** ${parsed.tasks.length}\n` +
+                  `**Documentation References:** ${parsed.context.documentation.length}\n\n` +
+                  `The PRP has been successfully parsed and saved to the database.`,
+              },
+            ],
           };
         });
       } catch (error) {
-        console.error('PRP parsing error:', error);
+        console.error("PRP parsing error:", error);
         return {
-          content: [{
-            type: "text",
-            text: `Failed to parse PRP: ${error.message}`,
-            isError: true
-          }]
+          content: [
+            {
+              type: "text",
+              text: `Failed to parse PRP: ${error.message}`,
+              isError: true,
+            },
+          ],
         };
       }
-    }
+    },
   );
 }
 
@@ -664,16 +669,16 @@ export class PRPParserMCP extends McpAgent<Env, Record<string, never>, Props> {
 
   async init() {
     console.log(`PRP Parser MCP initialized for user: ${this.props.login}`);
-    
+
     // Register basic tools available to all authenticated users
     registerParsePRPTool(this.server, this.env, this.props);
     registerTaskCRUDTools(this.server, this.env, this.props);
     registerDocumentationTools(this.server, this.env, this.props);
     registerTagTools(this.server, this.env, this.props);
     registerSearchTools(this.server, this.env, this.props);
-    
+
     // Register privileged tools based on user permissions
-    const PRIVILEGED_USERS = new Set(['coleam00']);
+    const PRIVILEGED_USERS = new Set(["coleam00"]);
     if (PRIVILEGED_USERS.has(this.props.login)) {
       // Add any admin-only tools here
       console.log(`Privileged tools enabled for: ${this.props.login}`);
@@ -765,26 +770,7 @@ curl -v http://localhost:8788/mcp
 # If errors: Check console output, verify environment variables, fix configuration
 ```
 
-### Level 4: MCP Tool Testing
-
-```bash
-# Test with MCP Inspector
-npx @modelcontextprotocol/inspector
-
-# Connect to: http://localhost:8788/mcp
-# Authenticate with GitHub
-# Test each tool:
-# 1. parsePRP with sample PRP content
-# 2. listTasks to verify parsing worked
-# 3. createTask to add new task
-# 4. updateTask to modify task
-# 5. searchByTag to test search functionality
-
-# Expected: All tools work correctly with proper responses
-# If errors: Check tool implementations, database queries, permissions
-```
-
-### Level 5: Integration Testing
+### Level 4: Integration Testing
 
 ```bash
 # Test complete workflow
@@ -819,18 +805,6 @@ npx @modelcontextprotocol/inspector
 - [ ] Permission system prevents unauthorized writes
 - [ ] One task per file pattern properly implemented
 
-### Production Readiness
-
-- [ ] All tests pass including error cases
-- [ ] Anthropic API integration works reliably
-- [ ] Database queries are optimized with proper indexes
-- [ ] Error messages are user-friendly and secure
-- [ ] Logging provides adequate debugging information
-- [ ] Production deployment succeeds
-- [ ] Monitoring and alerting configured (if using Sentry)
-
----
-
 ## Anti-Patterns to Avoid
 
 ### MCP-Specific
@@ -850,6 +824,5 @@ npx @modelcontextprotocol/inspector
 ### Development Process
 
 - ❌ Don't skip the validation loops - each level catches different issues
-- ❌ Don't deploy without testing all CRUD operations
 - ❌ Don't ignore TypeScript errors - fix all type issues before deployment
 - ❌ Don't forget to test with actual PRP content from examples
